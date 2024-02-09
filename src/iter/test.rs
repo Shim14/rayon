@@ -11,6 +11,7 @@ use std::collections::LinkedList;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::collections::{BinaryHeap, VecDeque};
 use std::f64;
+use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::sync::mpsc;
 use std::usize;
@@ -984,6 +985,25 @@ fn check_slice_split() {
 }
 
 #[test]
+fn check_slice_split_inclusive() {
+    let v: Vec<_> = (0..1000).collect();
+    for m in 1..100 {
+        let a: Vec<_> = v.split_inclusive(|x| x % m == 0).collect();
+        let b: Vec<_> = v.par_split_inclusive(|x| x % m == 0).collect();
+        assert_eq!(a, b);
+    }
+
+    // same as std::slice::split_inclusive() examples
+    let slice = [10, 40, 33, 20];
+    let v: Vec<_> = slice.par_split_inclusive(|num| num % 3 == 0).collect();
+    assert_eq!(v, &[&slice[..3], &slice[3..]]);
+
+    let slice = [3, 10, 40, 33];
+    let v: Vec<_> = slice.par_split_inclusive(|num| num % 3 == 0).collect();
+    assert_eq!(v, &[&slice[..1], &slice[1..]]);
+}
+
+#[test]
 fn check_slice_split_mut() {
     let mut v1: Vec<_> = (0..1000).collect();
     let mut v2 = v1.clone();
@@ -999,6 +1019,26 @@ fn check_slice_split_mut() {
         group[0] = 1;
     });
     assert_eq!(v, [1, 40, 30, 1, 60, 1]);
+}
+
+#[test]
+fn check_slice_split_inclusive_mut() {
+    let mut v1: Vec<_> = (0..1000).collect();
+    let mut v2 = v1.clone();
+    for m in 1..100 {
+        let a: Vec<_> = v1.split_inclusive_mut(|x| x % m == 0).collect();
+        let b: Vec<_> = v2.par_split_inclusive_mut(|x| x % m == 0).collect();
+        assert_eq!(a, b);
+    }
+
+    // same as std::slice::split_inclusive_mut() example
+    let mut v = [10, 40, 30, 20, 60, 50];
+    v.par_split_inclusive_mut(|num| num % 3 == 0)
+        .for_each(|group| {
+            let terminator_idx = group.len() - 1;
+            group[terminator_idx] = 1;
+        });
+    assert_eq!(v, [10, 40, 1, 20, 1, 1]);
 }
 
 #[test]
@@ -1529,13 +1569,27 @@ fn par_iter_collect_cows() {
     assert_eq!(a, b);
 
     // Collects `str` into a `String`
-    let a: Cow<'_, str> = s.split_whitespace().collect();
-    let b: Cow<'_, str> = s.par_split_whitespace().collect();
+    let sw = s.split_whitespace();
+    let psw = s.par_split_whitespace();
+    let a: Cow<'_, str> = sw.clone().collect();
+    let b: Cow<'_, str> = psw.clone().collect();
     assert_eq!(a, b);
 
     // Collects `String` into a `String`
-    let a: Cow<'_, str> = s.split_whitespace().map(str::to_owned).collect();
-    let b: Cow<'_, str> = s.par_split_whitespace().map(str::to_owned).collect();
+    let a: Cow<'_, str> = sw.map(str::to_owned).collect();
+    let b: Cow<'_, str> = psw.map(str::to_owned).collect();
+    assert_eq!(a, b);
+
+    // Collects `OsStr` into a `OsString`
+    let sw = s.split_whitespace().map(OsStr::new);
+    let psw = s.par_split_whitespace().map(OsStr::new);
+    let a: Cow<'_, OsStr> = Cow::Owned(sw.clone().collect());
+    let b: Cow<'_, OsStr> = psw.clone().collect();
+    assert_eq!(a, b);
+
+    // Collects `OsString` into a `OsString`
+    let a: Cow<'_, OsStr> = Cow::Owned(sw.map(OsStr::to_owned).collect());
+    let b: Cow<'_, OsStr> = psw.map(OsStr::to_owned).collect();
     assert_eq!(a, b);
 }
 
